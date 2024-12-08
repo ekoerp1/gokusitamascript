@@ -1,0 +1,157 @@
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+
+local player = Players.LocalPlayer
+
+local giveUltEvent = ReplicatedStorage:WaitForChild("Events"):WaitForChild("PrivateServer"):WaitForChild("GiveUlt")
+local removeUltEvent = ReplicatedStorage:WaitForChild("Events"):WaitForChild("PrivateServer"):WaitForChild("RemoveUltimate")
+
+-- Create GUI function to ensure it stays after death
+local function createUltimateControlGUI()
+    -- Ensure the GUI exists in PlayerGui
+    local screenGui = player:FindFirstChild("UltimateControlGUI")
+    if screenGui then
+        screenGui:Destroy()  -- If the GUI exists, remove it before re-creating
+    end
+
+    screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "UltimateControlGUI"
+    screenGui.Parent = player:WaitForChild("PlayerGui")
+
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Name = "MainFrame"
+    mainFrame.Size = UDim2.new(0, 220, 0, 200)
+    mainFrame.Position = UDim2.new(0.5, -110, 0.4, 0)
+    mainFrame.BackgroundColor3 = Color3.fromRGB(200, 200, 200)
+    mainFrame.BorderSizePixel = 0
+    mainFrame.Active = true
+    mainFrame.Draggable = false
+    mainFrame.Parent = screenGui
+
+    local dragCorner = Instance.new("Frame")
+    dragCorner.Name = "DragCorner"
+    dragCorner.Size = UDim2.new(1, 0, 1, 0)
+    dragCorner.BackgroundColor3 = Color3.fromRGB(150, 150, 150)
+    dragCorner.BorderSizePixel = 0
+    dragCorner.Parent = mainFrame
+
+    local uiCorner = Instance.new("UICorner")
+    uiCorner.CornerRadius = UDim.new(0, 5)
+    uiCorner.Parent = dragCorner
+
+    local collapseButton = Instance.new("TextButton")
+    collapseButton.Name = "CollapseButton"
+    collapseButton.Text = "-"
+    collapseButton.Size = UDim2.new(0, 30, 0, 30)
+    collapseButton.Position = UDim2.new(1, -35, 0, 5)
+    collapseButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+    collapseButton.TextColor3 = Color3.new(1, 1, 1)
+    collapseButton.Parent = dragCorner
+
+    local function createButton(name, text, position)
+        local button = Instance.new("TextButton")
+        button.Name = name
+        button.Text = text
+        button.Size = UDim2.new(0, 200, 0, 50)
+        button.Position = position
+        button.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
+        button.TextColor3 = Color3.new(1, 1, 1)
+        button.Parent = mainFrame
+        return button
+    end
+
+    local removeUltButton = createButton("RemoveUltButton", "Remove Ult", UDim2.new(0, 10, 0, 50))
+    local toggleLoopButton = createButton("ToggleLoopButton", "Start Loop", UDim2.new(0, 10, 0, 110))
+
+    local isLooping = false
+    local loopTask = nil
+
+    -- Function to fire RemoveUltimate
+    local function removeUlt()
+        removeUltEvent:FireServer(player)
+    end
+
+    -- Function to toggle GiveUlt loop
+    local function toggleGiveUltLoop()
+        isLooping = not isLooping
+
+        if isLooping then
+            toggleLoopButton.Text = "Stop Loop"
+            loopTask = task.spawn(function()
+                while isLooping do
+                    giveUltEvent:FireServer(player)
+                    task.wait(1) -- Adjust interval as needed
+                end
+            end)
+        else
+            toggleLoopButton.Text = "Start Loop"
+            if loopTask then
+                task.cancel(loopTask)
+            end
+        end
+    end
+
+    -- Enable dragging on mobile
+    local UserInputService = game:GetService("UserInputService")
+    local isDragging = false
+    local dragStart
+    local startPos
+
+    local function updateDrag(input)
+        local delta = input.Position - dragStart
+        mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+
+    dragCorner.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isDragging = true
+            dragStart = input.Position
+            startPos = mainFrame.Position
+
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    isDragging = false
+                end
+            end)
+        end
+    end)
+
+    dragCorner.InputChanged:Connect(function(input)
+        if isDragging and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
+            updateDrag(input)
+        end
+    end)
+
+    -- Collapse functionality
+    local isCollapsed = false
+    collapseButton.MouseButton1Click:Connect(function()
+        isCollapsed = not isCollapsed
+        if isCollapsed then
+            mainFrame.Size = UDim2.new(0, 220, 0, 40)
+            for _, child in ipairs(mainFrame:GetChildren()) do
+                if child:IsA("TextButton") and child.Name ~= "CollapseButton" then
+                    child.Visible = false
+                end
+            end
+        else
+            mainFrame.Size = UDim2.new(0, 220, 0, 200)
+            for _, child in ipairs(mainFrame:GetChildren()) do
+                if child:IsA("TextButton") then
+                    child.Visible = true
+                end
+            end
+        end
+    end)
+
+    -- Button connections
+    removeUltButton.MouseButton1Click:Connect(removeUlt)
+    toggleLoopButton.MouseButton1Click:Connect(toggleGiveUltLoop)
+end
+
+-- Re-create the GUI when the player respawns
+player.CharacterAdded:Connect(function()
+    createUltimateControlGUI()
+end)
+
+-- Initial creation of the GUI
+createUltimateControlGUI()
